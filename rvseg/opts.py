@@ -45,9 +45,9 @@ definitions = [
                           'help': "Write model weights after each epoch if validation accuracy improves."}),
 
     # augmentation
-    ('augment-training', {'default': False, 'action': 'store_true',
+    ('augment-training', {'default': True, 'action': 'store_true',
                           'help': "Whether to apply image augmentation to training set."}),
-    ('augment-validation', {'default': False, 'action': 'store_true',
+    ('augment-validation', {'default': True, 'action': 'store_true',
                             'help': "Whether to apply image augmentation to validation set."}),
     ('rotation-range',     (float, 180,    "Rotation range (0-180 degrees)")),
     ('width-shift-range',  (float, 0.1,    "Width shift range, as a float fraction of the width")),

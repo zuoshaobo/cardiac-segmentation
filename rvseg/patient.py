@@ -6,6 +6,10 @@ import os, glob, re
 import dicom
 import numpy as np
 from PIL import Image, ImageDraw
+import json
+import cv2
+import skimage.draw
+from keras import utils
 
 
 def maybe_rotate(image):
@@ -29,50 +33,78 @@ class PatientData(object):
     def __init__(self, directory):
         self.directory = os.path.normpath(directory)
 
-        # get patient index from contour listing file
-        glob_search = os.path.join(directory, "P*list.txt")
-        files = glob.glob(glob_search)
-        if len(files) == 0:
-            raise Exception("Couldn't find contour listing file in {}. "
-                            "Wrong directory?".format(directory))
-        self.contour_list_file = files[0]
-        match = re.search("P(..)list.txt", self.contour_list_file)
-        self.index = int(match.group(1))
-
         # load all data into memory
         self.load_images()
-
-        # some patients do not have contour data, and that's ok
+        '''
         try:
             self.load_masks()
         except FileNotFoundError:
             pass
+        '''
 
     @property
     def images(self):
-        return [self.all_images[i] for i in self.labeled]
+        return self.all_images
+    @property
+    def masks(self):
+        return self.all_masks
 
     @property
     def dicoms(self):
+        assert 0
         return [self.all_dicoms[i] for i in self.labeled]
 
     @property
     def dicom_path(self):
+        assert 0
         return os.path.join(self.directory, "P{:02d}dicom".format(self.index))
 
     def load_images(self):
-        glob_search = os.path.join(self.dicom_path, "*.dcm")
-        dicom_files = sorted(glob.glob(glob_search))
+        print(self.directory)
+        annotations = json.load(open(os.path.join(self.directory, "plaque_b_train.json")))
+        trainsize=annotations['size']
+        traindatas=annotations['datas']
         self.all_images = []
-        self.all_dicoms = []
-        for dicom_file in dicom_files:
-            plan = dicom.read_file(dicom_file)
-            image = maybe_rotate(plan.pixel_array)
-            self.all_images.append(image)
-            self.all_dicoms.append(plan)
-        self.image_height, self.image_width = image.shape
-        self.rotated = (plan.pixel_array.shape != image.shape)
+        self.all_masks=[]
+        for a in traindatas:
+            image_id=a['imagename']
+            path=self.directory+'/'+a['imagename']
+            image_info = {
+                    "id": image_id,
+                    "width": a['width'],
+                    "height": a['height'],
+                    "path":path,
+                    "polygons":a['imageshapes']
+                    }
+            mask_info = {
+                    "id": image_id,
+                    "width": a['width'],
+                    "height": a['height'],
+                    "path":path,
+                    "polygons":a['imageshapes']
+                    }
+            self.all_images.append(image_info)
+            self.all_masks.append(mask_info)
 
+    def load_a_image(self,imageinfo):
+        imagepath=imageinfo['path']
+        return np.expand_dims(cv2.imread(imagepath,0),axis=2)
+
+    def load_a_mask(self,maskinfo):
+        polygons=maskinfo['polygons']
+        masktemp = np.zeros([maskinfo["height"], maskinfo["width"], len(maskinfo["polygons"])], dtype=np.uint8)
+        for i, p in enumerate(polygons):
+            xy = list(map(tuple, p['points']))
+            xy=np.array(xy,dtype=np.int32)
+            rr, cc = skimage.draw.polygon(xy[0:,1], xy[0:,0])
+            masktemp[rr, cc, i] = 1
+        masktemp=np.sum(masktemp,axis=2)
+        masktemp=np.expand_dims(masktemp,axis=2)
+        #one-hot
+        masktemp=utils.to_categorical(masktemp).reshape([maskinfo["height"], maskinfo["width"],3])
+        return masktemp
+
+    '''
     def load_contour(self, filename):
         # strip out path head "patientXX/"
         match = re.search("patient../(.*)", filename)
@@ -127,4 +159,5 @@ class PatientData(object):
             grayscale = np.asarray(image * (255 / image.max()), dtype='uint8')
             video.write(cv2.cvtColor(grayscale, cv2.COLOR_GRAY2BGR))
         video.release()
+    '''
 

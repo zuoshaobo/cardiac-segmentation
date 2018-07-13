@@ -70,6 +70,7 @@ def train():
         "dilated-densenet": models.dilated_densenet,
         "dilated-densenet2": models.dilated_densenet2,
         "dilated-densenet3": models.dilated_densenet3,
+        "densenet-fcn": models.densenetfcn,
     }
     model = string_to_model[args.model]
     m = model(height=height, width=width, channels=channels, classes=classes,

@@ -28,16 +28,21 @@ def load_images(data_dir, mask='both'):
     """
     assert mask in ['inner', 'outer', 'both']
 
-    glob_search = os.path.join(data_dir, "patient*")
-    patient_dirs = sorted(glob.glob(glob_search))
-    if len(patient_dirs) == 0:
+    glob_search = os.path.join(data_dir, "datasets/plaqueb/train/*.jpg")
+    patient_jpgs = sorted(glob.glob(glob_search))
+    if len(patient_jpgs) == 0:
         raise Exception("No patient directors found in {}".format(data_dir))
 
     # load all images into memory (dataset is small)
     images = []
     inner_masks = []
     outer_masks = []
-    for patient_dir in patient_dirs:
+    p=patient.PatientData(os.path.join(data_dir,'datasets/plaqueb/train/'))
+    images=p.images
+    masks=p.masks
+
+    '''
+    for patient_dir in patient_jpgs:
         p = patient.PatientData(patient_dir)
         images += p.images
         inner_masks += p.endocardium_masks
@@ -58,8 +63,9 @@ def load_images(data_dir, mask='both'):
     classes = len(set(masks[0].flatten())) # get num classes from first image
     new_shape = dims + (classes,)
     masks = utils.to_categorical(masks).reshape(new_shape)
+    '''
 
-    return images, masks
+    return p, images, masks
 
 def random_elastic_deformation(image, alpha, sigma, mode='nearest',
                                random_state=None):
@@ -100,11 +106,13 @@ class Iterator(object):
                  zoom_range=0.01,
                  fill_mode='nearest',
                  alpha=500,
+                 mypatient=None,
                  sigma=20):
         self.images = images
         self.masks = masks
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.mypatient=mypatient
         augment_options = {
             'rotation_range': rotation_range,
             'width_shift_range': width_shift_range,
@@ -135,6 +143,10 @@ class Iterator(object):
         for n in self.index[start:end]:
             image = self.images[n]
             mask = self.masks[n]
+            image=self.mypatient.load_a_image(image)
+            mask=self.mypatient.load_a_mask(mask)
+            print(image.shape)
+
 
             _, _, channels = image.shape
 
@@ -171,15 +183,17 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
                       shuffle_train_val=True, shuffle=True, seed=None,
                       normalize_images=True, augment_training=False,
                       augment_validation=False, augmentation_args={}):
-    images, masks = load_images(data_dir, mask)
+    p,images, masks = load_images(data_dir, mask)
 
     # before: type(masks) = uint8 and type(images) = uint16
     # convert images to double-precision
+    '''
     images = images.astype('float64')
 
     # maybe normalize image
     if normalize_images:
         normalize(images, axis=(1,2))
+    '''
 
     if seed is not None:
         np.random.seed(seed)
@@ -197,7 +211,7 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
     if augment_training:
         train_generator = Iterator(
             images[:split_index], masks[:split_index],
-            batch_size, shuffle=shuffle, **augmentation_args)
+            batch_size, shuffle=shuffle,mypatient=p, **augmentation_args)
     else:
         idg = ImageDataGenerator()
         train_generator = idg.flow(images[:split_index], masks[:split_index],
@@ -209,7 +223,7 @@ def create_generators(data_dir, batch_size, validation_split=0.0, mask='both',
         if augment_validation:
             val_generator = Iterator(
                 images[split_index:], masks[split_index:],
-                batch_size, shuffle=shuffle, **augmentation_args)
+                batch_size, shuffle=shuffle, mypatient=p,**augmentation_args)
         else:
             idg = ImageDataGenerator()
             val_generator = idg.flow(images[split_index:], masks[split_index:],
